@@ -1,0 +1,11 @@
+{
+  "motions": [
+    { "name": "自拍手机", "file": "开盖", "hold": true },
+    { "name": "快速自拍", "file": "自拍", "hold": true },
+    { "name": "自拍动画", "file": "自拍简单", "hold": true },
+    { "name": "挤番茄酱", "file": "番茄酱" },
+    { "name": "重锤出击", "file": "重锤出击" },
+    { "name": "泡泡糖", "file": "泡泡糖" },
+    { "name": "鲸鱼喷水", "file": "喷水" }
+  ]
+}

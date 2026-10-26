@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bongo</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="stage"></div>
+
+  <div id="toast" hidden>
+    <span>需要「辅助功能」权限才能听到键盘</span>
+    <button id="grant">去授权</button>
+  </div>
+
+  <div id="ring" hidden></div>
+  <div id="panel" hidden></div>
+
+  <div id="error" hidden></div>
+
+  <script src="vendor/live2dcubismcore.min.js"></script>
+  <script src="vendor/pixi.min.js"></script>
+  <script src="vendor/pixi-live2d-display.min.js"></script>
+  <script src="menu.js"></script>
+  <script src="settings.js"></script>
+  <script src="motion.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
