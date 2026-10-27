@@ -1,16 +1,9 @@
-//go:build !darwin
+//go:build !darwin && !windows
 
 package input
 
-// Key is one key press: its key code, and whether Control or Command was
-// held.
-type Key struct {
-	Code    uint16
-	Control bool
-	Command bool
-}
-
-// StartKeyboard is a no-op: the app listens on macOS alone for now.
+// StartKeyboard is a no-op: the app listens on macOS and Windows alone for
+// now.
 func StartKeyboard(fn func(Key)) {}
 
 // StartMouse is a no-op.

@@ -1,6 +1,6 @@
 //go:build darwin
 
-package macos
+package window
 
 import (
 	"unsafe"
@@ -65,10 +65,10 @@ const (
 	phaseBegan = 1 << 0
 )
 
-// pinchTap keeps the event tap of WatchPinch alive.
+// pinchTap keeps the event tap of watchPinch alive.
 var pinchTap uintptr
 
-// WatchPinch calls fn with each step of a trackpad pinch over the pet, as
+// watchPinch calls fn with each step of a trackpad pinch over the pet, as
 // the factor the fingers ask for, and keeps the event from going anywhere
 // else: the page gets no gesture events of its own in a web view. over
 // reports whether the pointer is over the pet.
@@ -77,7 +77,7 @@ var pinchTap uintptr
 // active app, so the pinch is caught on its way there, which takes the
 // Accessibility permission. Without it, the pet hears pinches only while it
 // is active.
-func WatchPinch(fn func(mag float64), over func() bool) bool {
+func watchPinch(fn func(mag float64), over func() bool) bool {
 	if msgMagnification == nil {
 		return false
 	}
@@ -138,13 +138,13 @@ func watchPinchTap(fn func(mag float64), over func() bool) bool {
 	return true
 }
 
-// doubleClickMonitor keeps the monitor of WatchDoubleClick alive.
+// doubleClickMonitor keeps the monitor of watchDoubleClick alive.
 var doubleClickMonitor objc.ID
 
-// WatchDoubleClick keeps double clicks from the page: macOS zooms the window
+// watchDoubleClick keeps double clicks from the page: macOS zooms the window
 // on a double click in the drag region, which a pet has no use for, and
 // undoing the zoom moves the window.
-func WatchDoubleClick() bool {
+func watchDoubleClick() bool {
 	handler := objc.NewBlock(func(_ objc.Block, e objc.ID) objc.ID {
 		if e.Send(sel("clickCount")) > 1 {
 			return 0

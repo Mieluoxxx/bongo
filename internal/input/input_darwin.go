@@ -1,8 +1,5 @@
 //go:build darwin
 
-// Package input listens to the keyboard and the mouse buttons system-wide,
-// the keyboard through the Accessibility permission, and reports whether
-// the app has it.
 package input
 
 import (
@@ -24,14 +21,6 @@ const (
 	flagControl = 1 << 18
 	flagCommand = 1 << 20
 )
-
-// Key is one key press: its key code, and whether Control or Command was
-// held.
-type Key struct {
-	Code    uint16
-	Control bool
-	Command bool
-}
 
 type watcher struct {
 	monitors []objc.ID

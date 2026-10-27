@@ -14,11 +14,14 @@ import (
 	"github.com/egoist/mygo"
 
 	"bongo/internal/input"
-	"bongo/internal/macos"
+	"bongo/internal/window"
 )
 
 //go:embed all:web all:live2d
 var assets embed.FS
+
+// icon is the picture the taskbar and Alt+Tab show the pet by.
+var icon, _ = fs.ReadFile(assets, "live2d/vtube/icon.png")
 
 // appFS serves the frontend at the root and the model under /live2d.
 type appFS struct{}
@@ -93,7 +96,7 @@ func main() {
 		}
 		pet, area := startPet(dir)
 		app.pet, app.area = pet, area
-		win := mygo.NewWindow(mygo.WindowOptions{
+		win := window.New(mygo.WindowOptions{
 			Title:         "Bongo",
 			Width:         area.Width,
 			Height:        area.Height,
@@ -117,29 +120,24 @@ func main() {
 			if win.IsVisible() {
 				win.Hide()
 			} else {
-				win.Show()
+				window.Show(win)
 			}
 		})
 
-		log.Println("hide title bar:", macos.HideTitleBar(win.Title()))
-		log.Println("activate on click:", macos.ActivateOnClick(win.Title()))
-		macos.AcceptFirstClick()
-		log.Println("watch double click:", macos.WatchDoubleClick())
-		// The style mask takes the title bar off the frame: cover the work
-		// area again.
-		win.SetBounds(area)
-		if ignore := macos.IgnoreMouse(win.Title()); ignore != nil {
+		window.Setup(win, area, icon)
+		if ignore := window.IgnoreMouse(win); ignore != nil {
 			go app.watch(ignore)
 		} else {
 			log.Println("no window to let the mouse through")
 		}
-		log.Println("watch pinch:", macos.WatchPinch(func(mag float64) {
-			p := mygo.Screen.CursorScreenPoint()
-			app.mu.Lock()
-			a := app.area
-			app.mu.Unlock()
-			pinchEvents.Emit(win, PinchEvent{Mag: mag, X: float64(p.X - a.X), Y: float64(p.Y - a.Y)})
-		}, func() bool { return win.IsVisible() && app.over(mygo.Screen.CursorScreenPoint(), false) }))
+		log.Println("watch pinch:", window.WatchPinch(
+			func() bool { return win.IsVisible() && app.over(mygo.Screen.CursorScreenPoint(), false) },
+			func(mag float64, at mygo.Point) {
+				app.mu.Lock()
+				a := app.area
+				app.mu.Unlock()
+				pinchEvents.Emit(win, PinchEvent{Mag: mag, X: float64(at.X - a.X), Y: float64(at.Y - a.Y)})
+			}))
 		trusted := input.AccessibilityTrusted()
 		log.Println("accessibility trusted:", trusted)
 		statusEvents.Emit(win, StatusEvent{Accessibility: trusted})
