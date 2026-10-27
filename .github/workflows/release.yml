@@ -18,7 +18,42 @@ jobs:
           cache: true
       - name: Build the dmg
         run: scripts/package-dmg.sh "${GITHUB_REF_NAME#v}"
-      - name: Release it
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg
+          path: dist/Bongo.dmg
+          if-no-files-found: error
+
+  exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build the exe
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exe
+          path: dist/Bongo.exe
+          if-no-files-found: error
+
+  release:
+    needs: [dmg, exe]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Release both
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/Bongo.dmg --title "$GITHUB_REF_NAME" --generate-notes
+        run: >
+          gh release create "$GITHUB_REF_NAME"
+          dist/dmg/Bongo.dmg dist/exe/Bongo.exe
+          --repo "$GITHUB_REPOSITORY"
+          --title "$GITHUB_REF_NAME"
+          --generate-notes
