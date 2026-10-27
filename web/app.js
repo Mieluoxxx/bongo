@@ -81,9 +81,13 @@ function fit() {
 
 // place moves the canvas, and what goes with the pet, to where it is.
 function place() {
-  // Keep a hold on the pet: never let it go off the screen entirely.
-  pet.x = Math.min(Math.max(pet.x, 0), window.innerWidth);
-  pet.y = Math.min(Math.max(pet.y, 0), window.innerHeight);
+  // Keep a hold on the pet: never let it go off the screen entirely. A
+  // drag may take it past the window, to another display, which the window
+  // goes to.
+  if (!drag && !switching) {
+    pet.x = Math.min(Math.max(pet.x, 0), window.innerWidth);
+    pet.y = Math.min(Math.max(pet.y, 0), window.innerHeight);
+  }
   app.view.style.transform =
     `translate(${pet.x - STAGE.width / 2}px, ${pet.y - STAGE.height / 2}px)`;
   const r = petRect();
@@ -100,6 +104,7 @@ function place() {
 // most; everywhere else the mouse goes through the window.
 let hitFrame = 0;
 let hitSent = "";
+let hitHeld = false;
 function reportHit() {
   if (hitFrame) return;
   hitFrame = requestAnimationFrame(() => {
@@ -112,6 +117,10 @@ function reportHit() {
       rects.push({ x: b.left, y: b.top, w: b.width, h: b.height });
     }
     const hold = Boolean(drag) || Radial.busy || Settings.visible;
+    // A drag takes the mouse everywhere: where the pet is can wait for it
+    // to land, rather than cross to the app every frame.
+    if (drag && hitHeld) return;
+    hitHeld = hold;
     const json = JSON.stringify([rects, hold]);
     if (json === hitSent) return;
     hitSent = json;
@@ -530,8 +539,27 @@ function zoomTo(s, x, y) {
 
 // Dragging moves the canvas, which costs the compositor alone. A press
 // that does not move pets the pet instead.
+//
+// The pointer reports about twice a frame, but unevenly: no report reaches
+// one frame in five, and the next takes three. Moving the pet on each
+// report stalls it, then jumps it. Each frame instead places it where the
+// pointer was DRAG_LAG ms before, between the two reports around that time
+// by their timestamps, or, with no report yet, a little further along the
+// pointer's way. That guess goes back to the last report by DRAG_AHEAD ms
+// past it, so a pointer that stops does not leave the pet overshot.
+const DRAG_LAG = 8;
+const DRAG_AHEAD = 16;
 let drag = null;
 let movedAt = 0;
+// Where the window is, from where it started: the page's points plus this
+// hold still on the screen as the window goes to another display. Its
+// screenY cannot: WebKit counts it from the top of the display the window
+// is on.
+let ox = 0, oy = 0;
+// A pointer report from before the window last moved, or while it moves,
+// is from where the window was.
+let windowMovedAt = 0;
+let windowMoving = false;
 
 app.view.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
@@ -539,31 +567,72 @@ app.view.addEventListener("pointerdown", (e) => {
   if (e.clientX < r.x || e.clientX > r.x + r.w || e.clientY < r.y || e.clientY > r.y + r.h) return;
   stepAnim = null;
   stepped = null;
-  drag = { x0: e.clientX, y0: e.clientY, px: pet.x, py: pet.y, moved: false };
+  drag = { x0: e.clientX + ox, y0: e.clientY + oy, px: pet.x, py: pet.y, moved: false, trail: [], frame: 0 };
   app.view.setPointerCapture(e.pointerId);
   reportHit();
 });
 
 app.view.addEventListener("pointermove", (e) => {
-  if (!drag || state.locked) return;
-  const dx = e.clientX - drag.x0;
-  const dy = e.clientY - drag.y0;
+  if (!drag || state.locked || windowMoving || e.timeStamp <= windowMovedAt) return;
+  const dx = e.clientX + ox - drag.x0;
+  const dy = e.clientY + oy - drag.y0;
   if (!drag.moved && Math.hypot(dx, dy) < 4) return;
   drag.moved = true;
-  pet.x = drag.px + dx;
-  pet.y = drag.py + dy;
+  drag.trail.push({ t: e.timeStamp, dx, dy });
+  if (drag.trail.length > 8) drag.trail.shift();
+  if (!drag.frame) drag.frame = requestAnimationFrame(dragStep);
+});
+
+// dragAt is how far the pointer had gone from where the drag began at time t.
+function dragAt(trail, t) {
+  const last = trail[trail.length - 1];
+  if (t >= last.t) {
+    // The pointer's speed over its last few reports: over one, a pixel's
+    // rounding swings it.
+    let first = trail.length - 1;
+    while (first > 0 && last.t - trail[first - 1].t <= 24) first--;
+    const a = trail[first];
+    const span = last.t - a.t;
+    if (span <= 0) return last;
+    const ahead = t - last.t;
+    const k = Math.max(0, Math.min(ahead, DRAG_AHEAD - ahead)) / span;
+    return { dx: last.dx + (last.dx - a.dx) * k, dy: last.dy + (last.dy - a.dy) * k };
+  }
+  let i = trail.length - 1;
+  while (i > 0 && trail[i - 1].t > t) i--;
+  if (i === 0) return trail[0];
+  const a = trail[i - 1];
+  const b = trail[i];
+  const k = (t - a.t) / (b.t - a.t || 1);
+  return { dx: a.dx + (b.dx - a.dx) * k, dy: a.dy + (b.dy - a.dy) * k };
+}
+
+function dragStep(now) {
+  if (!drag) return;
+  drag.frame = 0;
+  const last = drag.trail[drag.trail.length - 1];
+  const at = dragAt(drag.trail, now - DRAG_LAG);
+  pet.x = drag.px + at.dx;
+  pet.y = drag.py + at.dy;
   place();
-  // The app takes the window to the display the pet goes to.
-  const now = performance.now();
   if (now - movedAt > 100) {
     movedAt = now;
-    bridge.call("Bongo.Moved", pet.x, pet.y);
+    follow();
   }
-});
+  // Keep gliding until the pet is back on the last report.
+  if (now - DRAG_LAG < last.t + DRAG_AHEAD) drag.frame = requestAnimationFrame(dragStep);
+}
 
 function endDrag() {
   if (!drag) return;
-  const moved = drag.moved;
+  const { moved, trail, frame } = drag;
+  cancelAnimationFrame(frame);
+  if (moved) {
+    // Land where the pointer let go, not where the glide got to.
+    const last = trail[trail.length - 1];
+    pet.x = drag.px + last.dx;
+    pet.y = drag.py + last.dy;
+  }
   drag = null;
   reportHit();
   if (!moved) {
@@ -571,8 +640,45 @@ function endDrag() {
     showExpression(true);
     return;
   }
-  bridge.call("Bongo.Moved", pet.x, pet.y);
-  save();
+  // Where it lands holds it only once the window is on its display.
+  follow().then(() => {
+    place();
+    save();
+  });
+}
+
+// follow takes the window to the display the pet's centre went to, and
+// resolves once it is there, or at once if it is there already. The pet
+// hides meanwhile: until the page hears where the window went, it would
+// show for a frame or two at its old place on the new display.
+let switching = null;
+let originSeen = null;
+const frames = (n) => new Promise((done) => {
+  const step = () => (--n > 0 ? requestAnimationFrame(step) : done());
+  requestAnimationFrame(step);
+});
+
+function follow() {
+  if (switching) return switching;
+  switching = (async () => {
+    try {
+      if (!(await bridge.call("Bongo.Moved", pet.x, pet.y))) return;
+      app.view.style.visibility = "hidden";
+      await frames(2);
+      const seen = new Promise((done) => { originSeen = done; });
+      windowMoving = true;
+      if (await bridge.call("Bongo.Switch", pet.x, pet.y)) {
+        await Promise.race([seen, new Promise((done) => setTimeout(done, 500))]);
+        await frames(2);
+      }
+    } finally {
+      windowMoving = false;
+      originSeen = null;
+      switching = null;
+      app.view.style.visibility = "";
+    }
+  })();
+  return switching;
 }
 app.view.addEventListener("pointerup", endDrag);
 app.view.addEventListener("pointercancel", endDrag);
@@ -580,17 +686,20 @@ app.view.addEventListener("pointercancel", endDrag);
 // The window moved to another display, or its work area changed: what
 // stays put on screen moves the other way in the page.
 bridge.on("bongo:origin", (o) => {
+  ox -= o.dx;
+  oy -= o.dy;
+  windowMovedAt = performance.now();
+  windowMoving = false;
   pet.x += o.dx;
   pet.y += o.dy;
   zoom.ax += o.dx;
   zoom.ay += o.dy;
   if (drag) {
-    drag.x0 += o.dx;
-    drag.y0 += o.dy;
     drag.px += o.dx;
     drag.py += o.dy;
   }
   place();
+  if (originSeen) originSeen();
 });
 window.addEventListener("resize", place);
 

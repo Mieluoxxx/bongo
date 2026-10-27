@@ -93,16 +93,32 @@ func (b *bongo) Initial() Pet {
 	return pet
 }
 
-// Moved tells where the pet's centre went, in page points, and takes the
-// window to the display it went to.
-func (b *bongo) Moved(x, y float64) {
-	b.mu.Lock()
-	p := mygo.Point{X: b.area.X + int(x), Y: b.area.Y + int(y)}
-	area := b.area
-	b.mu.Unlock()
-	if next := mygo.Screen.DisplayNearestPoint(p).WorkArea; next != area {
-		b.place(next)
+// Moved reports whether the pet's centre, in page points, went to another
+// display, which Switch takes the window to.
+func (b *bongo) Moved(x, y float64) bool {
+	area, next := b.displayAt(x, y)
+	return next != area
+}
+
+// Switch takes the window to the display the pet's centre is on, in page
+// points, and reports whether it went.
+func (b *bongo) Switch(x, y float64) bool {
+	area, next := b.displayAt(x, y)
+	if next == area {
+		return false
 	}
+	b.place(next)
+	return true
+}
+
+// displayAt returns the work area the window covers, and that of the
+// display nearest (x, y), in page points.
+func (b *bongo) displayAt(x, y float64) (area, next mygo.Rectangle) {
+	b.mu.Lock()
+	area = b.area
+	b.mu.Unlock()
+	p := mygo.Point{X: area.X + int(math.Floor(x)), Y: area.Y + int(math.Floor(y))}
+	return area, mygo.Screen.DisplayNearestPoint(p).WorkArea
 }
 
 // Save keeps the pet's centre, in page points, and its scale for the next

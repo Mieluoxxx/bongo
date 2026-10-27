@@ -106,6 +106,8 @@ func main() {
 			URL:           "/",
 		})
 		app.win = win
+		// A pet keeps the user company on every desktop.
+		win.SetVisibleOnAllWorkspaces(true)
 
 		// A double click zooms a titled window, which a pet has no use for:
 		// undo it.
